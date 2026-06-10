@@ -3,60 +3,168 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>保育園候補マップ v7.2</title>
+  <title>保活Webアプリ v1.0</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-<header>
-  <div>
-    <h1>保育園候補マップ v7.2</h1>
-    <p>認可0歳候補＋認可外BCP統合版 / 清新町・西葛西中心、東葛西・南葛西は低優先で保持</p>
-  </div>
-  <div class="header-actions">
-    <a href="https://www.city.edogawa.tokyo.jp/e047/kuseijoho/gaiyo/shisetsuguide/bunya/kosodate/hoikuen/index.html" target="_blank">江戸川区公式</a>
-  </div>
-</header>
-
-<main>
-  <section id="sidebar">
-    <div class="filters">
-      <label>区分
-        <select id="kindFilter">
-          <option value="all">すべて</option>
-          <option value="認可">認可</option>
-          <option value="bcp">認可外BCP</option>
-        </select>
-      </label>
-      <label>優先度
-        <select id="priorityFilter">
-          <option value="all">すべて</option>
-          <option value="S">S</option>
-          <option value="A">A</option>
-          <option value="B">B</option>
-          <option value="C">C/遠方保険</option>
-          <option value="BCP-S">BCP-S</option>
-          <option value="BCP-A">BCP-A</option>
-          <option value="BCP-B">BCP-B</option>
-          <option value="BCP-C">BCP-C</option>
-        </select>
-      </label>
-      <input id="searchBox" type="search" placeholder="園名・エリア検索">
+  <header class="app-header">
+    <div>
+      <h1>保活Webアプリ v1.0</h1>
+      <p>保育園見学から評価入力、比較、志望順位決定までをローカルで管理</p>
+      <p class="file-state">
+        読込中: <span id="currentFileName">初期データ</span>
+        <span aria-hidden="true">/</span>
+        最終更新: <span id="lastUpdated">未保存</span>
+      </p>
     </div>
-    <div id="summary"></div>
-    <div id="list"></div>
-  </section>
-  <section id="mapwrap">
-    <div id="map"></div>
-    <div id="fallback" hidden>
-      <h2>地図を読み込めませんでした</h2>
-      <p>リストの「Google Maps」から位置を確認してください。</p>
+    <div class="header-actions">
+      <label class="button primary">
+        JSON読込
+        <input id="jsonInput" type="file" accept="application/json" hidden>
+      </label>
+      <button id="saveJson" class="button primary" type="button">JSON保存</button>
+      <button id="restoreDraft" class="button ghost" type="button" hidden>入力途中を復元</button>
     </div>
-  </section>
-</main>
+  </header>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="./data.js"></script>
-<script src="./app.js"></script>
+  <nav class="tabs" aria-label="画面切替">
+    <button class="tab active" data-view="listView" type="button">園一覧</button>
+    <button class="tab" data-view="dashboardView" type="button">ダッシュボード</button>
+    <button class="tab" data-view="rankView" type="button">志望順位</button>
+  </nav>
+
+  <main>
+    <section id="listView" class="view active">
+      <aside class="panel">
+        <div class="filters">
+          <label>区分
+            <select id="kindFilter">
+              <option value="all">すべて</option>
+              <option value="認可">認可</option>
+              <option value="認可外">認可外・BCP</option>
+            </select>
+          </label>
+          <label>優先度
+            <select id="priorityFilter">
+              <option value="all">すべて</option>
+              <option>S</option>
+              <option>A</option>
+              <option>B</option>
+              <option>C</option>
+              <option>BCP-S</option>
+              <option>BCP-A</option>
+              <option>BCP-B</option>
+              <option>BCP-C</option>
+            </select>
+          </label>
+          <label class="wide">検索
+            <input id="searchBox" type="search" placeholder="園名・エリア・住所">
+          </label>
+        </div>
+        <div id="summary" class="summary"></div>
+        <div id="nurseryList" class="nursery-list"></div>
+      </aside>
+      <section class="map-panel">
+        <div class="map-head">
+          <div>
+            <h2>候補マップ</h2>
+            <p>オフライン表示用の簡易プロット。点を押すと詳細を表示します。</p>
+          </div>
+          <button id="fitMap" class="button ghost" type="button">全体表示</button>
+        </div>
+        <div id="offlineMap" class="offline-map" role="img" aria-label="保育園候補の簡易地図"></div>
+        <div id="detailPanel" class="detail-panel"></div>
+      </section>
+    </section>
+
+    <section id="dashboardView" class="view">
+      <div class="section-head">
+        <h2>評価ダッシュボード</h2>
+        <p>入園可能性と通園運用を重く見て、通わせ続けられる園を比較します。</p>
+      </div>
+      <div id="progressCards" class="metrics"></div>
+      <div class="dashboard-grid">
+        <section class="block">
+          <h3>ランキング</h3>
+          <div id="rankingTable" class="table-wrap"></div>
+        </section>
+        <section class="block">
+          <h3>レーダーチャート</h3>
+          <select id="radarSelect" aria-label="レーダーチャート対象園"></select>
+          <canvas id="radarCanvas" width="420" height="420"></canvas>
+        </section>
+        <section class="block">
+          <h3>妻夫比較</h3>
+          <div id="coupleDiff"></div>
+        </section>
+        <section class="block">
+          <h3>要確認一覧</h3>
+          <div id="recheckList"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="rankView" class="view">
+      <div class="section-head">
+        <h2>志望順位管理</h2>
+        <p>ドラッグで順位を入れ替えできます。根拠と懸念を残して、申込直前の判断材料にします。</p>
+      </div>
+      <div id="rankList" class="rank-list"></div>
+    </section>
+  </main>
+
+  <dialog id="reviewDialog">
+    <form id="reviewForm" method="dialog">
+      <div class="modal-head">
+        <div>
+          <h2 id="formTitle">見学評価</h2>
+          <p id="formSub"></p>
+        </div>
+        <button id="closeDialog" class="icon-button" type="button" aria-label="閉じる">×</button>
+      </div>
+
+      <input id="nurseryId" type="hidden">
+      <div class="form-grid">
+        <label>見学日<input id="visitDate" name="visitDate" type="date"></label>
+        <label>担当者<input id="contactPerson" name="contactPerson" type="text"></label>
+        <label>見学状況
+          <select id="visitStatus" name="visitStatus">
+            <option>未見学</option>
+            <option>見学予約済</option>
+            <option>見学済</option>
+            <option>評価済</option>
+            <option>見学不要</option>
+          </select>
+        </label>
+        <label>志望順位<input id="wishRank" name="wishRank" type="number" min="1" inputmode="numeric"></label>
+      </div>
+
+      <div id="sections"></div>
+
+      <section class="form-section">
+        <h3>コメント</h3>
+        <div class="memo-grid">
+          <label>妻コメント<textarea id="wifeComment" name="wifeComment" rows="3"></textarea></label>
+          <label>夫コメント<textarea id="husbandComment" name="husbandComment" rows="3"></textarea></label>
+          <label>第一印象<textarea id="firstImpression" name="firstImpression" rows="3"></textarea></label>
+          <label>要再確認事項<textarea id="recheckItems" name="recheckItems" rows="3"></textarea></label>
+          <label>採用理由<textarea id="adoptionReason" name="adoptionReason" rows="3"></textarea></label>
+          <label>懸念事項<textarea id="concerns" name="concerns" rows="3"></textarea></label>
+        </div>
+      </section>
+
+      <div class="modal-actions">
+        <button id="deleteReview" class="button danger" type="button">評価を削除</button>
+        <span class="spacer"></span>
+        <button id="cancelDialog" class="button ghost" type="button">キャンセル</button>
+        <button id="saveReview" class="button primary" type="button">保存</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="./data.js"></script>
+  <script src="./app.js"></script>
 </body>
 </html>
